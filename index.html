@@ -14,14 +14,14 @@ canvas {
   font-family: Roboto,sans-serif;
   font-weight: 300;
   font-size: 12px;
-  background-color: rgba(0,0,0,0.7);
+  background-color: rgba(0,0,0,0.8);
   padding: 10px 20px;
   color: #fff;
   position: absolute;
   z-index: 1;
+  right: 0;
 }
 #controls {
-  right: 0;
   bottom: 0;
 }
 h1 {
@@ -53,9 +53,10 @@ a:hover {
   position: absolute;
   top: 24px;
   right: 20px;
-  display: none;
+  display: inline;
 }
 @media only screen and (max-width: 600px) {
+  #description { left: 0; width: auto; }
   #controls { visibility: hidden; }
   #more { display: inline; }
   #details { display: none; }
@@ -76,9 +77,11 @@ a:hover {
             Lens Blur</a>
           <a href="https://developers.google.com/depthmap-metadata">depth map data</a> as a mesh.</p>
         <p>Built with <a href="http://www.threejs.org/">three.js</a> and
-          <a href="https://github.com/spite/android-lens-blur-depth-extractor">android-lens-blur-depth-extractor</a>.
-        <p>Inspired by <a href="http://depthy.stamina.pl/">Depthy</a> by Rafał Lindemann and
-          <a href="http://www.clicktorelease.com/code/depth-player/">Depth data viewer</a> by Jaume Sánchez.
+          <a href="https://github.com/spite/android-lens-blur-depth-extractor">android-lens-blur-depth-extractor</a>. Inspired by <a href="http://depthy.stamina.pl/">Depthy</a> by
+          Rafał Lindemann and
+          <a href="http://www.clicktorelease.com/code/depth-player/">Depth data viewer</a> by
+          Jaume Sánchez.
+        <p>Source available on <a href="https://github.com/keithito/depthmesh">GitHub</a>.
         <p>Select an image:</p>
         <p>
           <a href="javascript:loadImage('pens')"><img src="thumb_pens.jpg" width="80" height="80"></a>
@@ -102,9 +105,9 @@ a:hover {
     </div>
 
     <div id="container"></div>
-    <script src="three.min.js"></script>
-    <script src="three-controls.js"></script>
-    <script src="depth-extractor.js" ></script>
+    <script src="lib/three.min.js"></script>
+    <script src="lib/three-controls.js"></script>
+    <script src="lib/depth-extractor.js" ></script>
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
     <script>
 /* Copyright (c) 2014 Keith Ito. Distrbuted under MIT License (see LICENSE file for details) */
