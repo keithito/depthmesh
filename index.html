@@ -2,12 +2,18 @@
   <head>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta charset="utf-8">
+    <meta property="og:title" content="Depth Mesh Viewer" />
+    <meta property="og:description" content="Visualize Google Camera Lens Blur depth maps as a textured meshes." />
+    <meta property="og:image" content="http://www.convoluted.net/depthmesh/screenshot.jpg" />
     <title>Depth Mesh Viewer</title>
     <link href='http://fonts.googleapis.com/css?family=Roboto:300,400' rel='stylesheet' type='text/css'>
     <style>
+body {
+  background: #000;
+}
 canvas {
   width: 100%;
-  height: 100%
+  height: 100%;
 }
 .overlay {
   width: 250px;
@@ -22,7 +28,28 @@ canvas {
   right: 0;
 }
 #controls {
-  bottom: 0;
+  left: 0;
+  right: auto;
+}
+#loading-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-left: -100px;
+  margin-top: -30px;
+  width: 200px;
+  height: 60px;
+  background-color: rgba(0,0,0,0.8);
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
+
+}
+#loading-message {
+  font-family: Roboto,sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  margin-top: 18px;
+  text-align: center;
+  color: #fff;
 }
 h1 {
   font-weight: 300;
@@ -33,7 +60,7 @@ h2 {
   font-size: 12px;
 }
 p {
-  margin: 12px 0;
+  margin: 10px 0;
 }
 a {
   text-decoration: inherit;
@@ -59,6 +86,7 @@ a:hover {
   #description { left: 0; width: auto; }
   #controls { visibility: hidden; }
   #more { display: inline; }
+  #less { display: none; }
   #details { display: none; }
 }
     </style>
@@ -75,13 +103,13 @@ a:hover {
             Google Camera
           <a href="http://googleresearch.blogspot.com/2014/04/lens-blur-in-new-google-camera-app.html">
             Lens Blur</a>
-          <a href="https://developers.google.com/depthmap-metadata">depth map data</a> as a mesh.</p>
+          <a href="https://developers.google.com/depthmap-metadata">depth map data</a> as a textured mesh.</p>
         <p>Built with <a href="http://www.threejs.org/">three.js</a> and
-          <a href="https://github.com/spite/android-lens-blur-depth-extractor">android-lens-blur-depth-extractor</a>. Inspired by <a href="http://depthy.stamina.pl/">Depthy</a> by
-          Rafał Lindemann and
+          <a href="https://github.com/spite/android-lens-blur-depth-extractor">android-lens-blur-depth-extractor</a>.
+          Inspired by <a href="http://depthy.stamina.pl/">Depthy</a> by Rafał Lindemann and
           <a href="http://www.clicktorelease.com/code/depth-player/">Depth data viewer</a> by
           Jaume Sánchez.
-        <p>Source available on <a href="https://github.com/keithito/depthmesh">GitHub</a>.
+        <p>Source available on <a href="https://github.com/keithito/depthmesh">GitHub</a>.</p>
         <p>Select an image:</p>
         <p>
           <a href="javascript:loadImage('pens')"><img src="thumb_pens.jpg" width="80" height="80"></a>
@@ -99,18 +127,21 @@ a:hover {
       <h2>Controls:</h2>
       <ul>
         <li>Click and drag to rotate
-        <li>Use mouse wheel to zoom
+        <li>Use scroll wheel to zoom
         <li>Right click and drag to move
+        <li>Press f to toggle fill
       </ul>
     </div>
-
+    <div id="loading-box">
+      <div id="loading-message">Loading...</div>
+    </div>
     <div id="container"></div>
     <script src="lib/three.min.js"></script>
     <script src="lib/three-controls.js"></script>
     <script src="lib/depth-extractor.js" ></script>
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
     <script>
-/* Copyright (c) 2014 Keith Ito. Distrbuted under MIT License (see LICENSE file for details) */
+/* Copyright (c) 2014 Keith Ito. MIT License: http://convoluted.net/depthmesh/LICENSE */
 
 (function() {
   var VERTEX_SHADER = [
@@ -207,17 +238,12 @@ a:hover {
     return geometry;
   }
 
-  function getDepthData(depth, size) {
-    var depthMime = depth.mime || 'image/png';
-    var img = new Image();
-    img.src = 'data:' + depthMime + ';base64,' + depth.data;
-
+  function getDepthData(img, size) {
     var canvas = document.createElement('canvas');
     canvas.width = size.width;
     canvas.height = size.height;
     var ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, size.width, size.height);
-    console.log(size.width + 'x' + size.height);
     var depthData = ctx.getImageData(0, 0, size.width, size.height);
     return depthData.data;
   }
@@ -236,7 +262,10 @@ a:hover {
     }
   }
 
-  var scene, camera, controls, mesh;
+
+  var scene, camera, controls;
+  var mesh, lines;
+  var isShowingLines;
 
   function createScene(color, depth, focalDistance) {
     var aspectRatio = window.innerWidth / window.innerHeight;
@@ -244,52 +273,86 @@ a:hover {
     camera = new THREE.PerspectiveCamera(40, aspectRatio, 0.1, 400);
 
     var colorMime = color.mime || 'image/jpeg';
-    var tex = THREE.ImageUtils.loadTexture('data:' + colorMime + ';base64,' + color.data);
-    var gridSize = getGridSize(tex.image);
-    var uniforms = {
-      tex: { type: 't', value: tex }
-    };
-    var material = new THREE.ShaderMaterial({
-      uniforms: uniforms,
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
-      side: THREE.DoubleSide,
+    var tex = THREE.ImageUtils.loadTexture('data:' + colorMime + ';base64,' + color.data,
+        undefined, function() {
+      var gridSize = getGridSize(tex.image);
+      var uniforms = {
+        tex: { type: 't', value: tex }
+      };
+      var material = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: VERTEX_SHADER,
+        fragmentShader: FRAGMENT_SHADER,
+        side: THREE.DoubleSide,
+      });
+
+      var imagePlaneWidth = IMAGE_PLANE_SIZE;
+      if (gridSize.width < gridSize.height) {
+        imagePlaneWidth = IMAGE_PLANE_SIZE * gridSize.width / gridSize.height;
+      }
+
+      var depthMime = depth.mime || 'image/png';
+      var img = new Image();
+      img.onload = function() {
+        hideMessage();
+        var geometry = buildGrid(gridSize, getDepthData(img, gridSize), focalDistance,
+            imagePlaneWidth, parseFloat(depth.near), parseFloat(depth.far));
+        mesh = new THREE.Mesh(geometry, material);
+        lines = new THREE.Line(geometry, material);
+        mesh.translateZ(focalDistance);
+        lines.translateZ(focalDistance);
+        scene.add(mesh);
+        isShowingLines = false;
+
+        camera.position.set(0, 0, focalDistance);
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+        camera.up.set(0, 1, 0);
+
+        controls = new THREE.TrackballControls(camera, renderer.domElement);
+        controls.rotateSpeed = 0.1;
+      };
+
+      img.src = 'data:' + depthMime + ';base64,' + depth.data;
     });
+  }
 
-    var imagePlaneWidth = IMAGE_PLANE_SIZE;
-    if (gridSize.width < gridSize.height) {
-      imagePlaneWidth = IMAGE_PLANE_SIZE * gridSize.width / gridSize.height;
+  function toggleMesh() {
+    if (mesh && lines) {
+      if (isShowingLines) {
+        scene.remove(lines);
+        scene.add(mesh);
+        isShowingLines = false;
+      } else {
+        scene.remove(mesh);
+        scene.add(lines);
+        isShowingLines = true;
+      }
     }
+  }
 
-    var geometry = buildGrid(gridSize, getDepthData(depth, gridSize), focalDistance,
-        imagePlaneWidth, parseFloat(depth.near), parseFloat(depth.far));
-    mesh = new THREE.Mesh(geometry, material);
-    mesh.translateZ(focalDistance);
-    scene.add(mesh);
+  function showMessage(msg) {
+    $('#loading-box').show();
+    $('#loading-message').text(msg || 'Loading...');
+  }
 
-    camera.position.set(0, 0, focalDistance);
-    camera.lookAt(new THREE.Vector3(0, 0, 0));
-    camera.up.set(0, 1, 0);
-
-    controls = new THREE.TrackballControls(camera, renderer.domElement);
-    controls.rotateSpeed = 0.1;
+  function hideMessage() {
+    $('#loading-box').hide();
   }
 
   function loadImage(name) {
-    if (mesh) {
-      scene.remove(mesh);
-      render();
-    }
+    showMessage();
     var d = new DepthReader();
     d.loadFile(name + '.jpg', function() {
       createScene(d.image, d.depth, parseFloat(d.focus.focalDistance));
     }, function(error) {
       console.log(error);
-    });
+      showMessage(error);
+  });
   }
 
   function uploadFile(file) {
     if (file && file.type.match(/image.*/)) {
+      showMessage();
       var reader = new FileReader();
       reader.onload = function(e) {
         var d = new DepthReader();
@@ -297,12 +360,17 @@ a:hover {
           createScene(d.image, d.depth, parseFloat(d.focus.focalDistance));
         }, function(error) {
           console.log(error);
+          showMessage(error);
         });
       }
       reader.readAsArrayBuffer(file);
     }
   }
 
+  if (!window.WebGLRenderingContext) {
+    showMessage('Sorry, your browser does not support WebGL.');
+    return;
+  }
   var renderer = new THREE.WebGLRenderer();
   renderer.setSize(window.innerWidth, window.innerHeight);
   $('#container').append(renderer.domElement);
@@ -312,15 +380,21 @@ a:hover {
   });
 
   $('#more').click(function() {
-    $('#details').show();
-    $('#more').hide();
-    $('#less').show();
+    $('#details').show('fast');
+    $('#more').hide('fast');
+    $('#less').show('fast');
   });
 
   $('#less').click(function() {
-    $('#details').hide();
-    $('#more').show();
-    $('#less').hide();
+    $('#details').hide('fast');
+    $('#more').show('fast');
+    $('#less').hide('fast');
+  });
+
+  $(document).keypress(function(e) {
+    if (e.which == 102) {
+      toggleMesh();
+    }
   });
 
   var render = function () {
